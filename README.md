@@ -7,16 +7,13 @@ An interpretable early warning system for Adult ICU sepsis risk, focusing on tre
 - **DB**: PostgreSQL 14
 - **Local dev**: Docker + Docker Compose
 
-## Quickstart (local)
+## Quickstart
 
 ```bash
 docker compose up --build
 ```
 
-Then open:
-
-- `http://localhost:8000/patients/` - Patient list and simulation
-- `http://localhost:8000/patients/<subject_id>/<stay_id>/<hadm_id>/` - Patient detail with vitals, procedures, predictions
+Then open `http://localhost:8000/patients/`. See [RUNNING.md](RUNNING.md) for detailed run instructions and model service setup.
 
 ## Repository structure
 
@@ -29,7 +26,8 @@ Then open:
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
-└── .env.example
+├── .env.example
+└── RUNNING.md         # Run instructions, model service contract
 ```
 
 ## API Endpoints
