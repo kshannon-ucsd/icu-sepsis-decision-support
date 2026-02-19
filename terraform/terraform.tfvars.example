@@ -1,0 +1,17 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is git-ignored so secrets stay local.
+
+# AWS region — us-east-1 is the cheapest for S3
+aws_region = "us-east-1"
+
+# Must be globally unique across all AWS accounts
+bucket_name = "my-project-shared-bucket-abc123"
+
+# IAM username for each friend (one user will be created per entry)
+friends = ["alice", "bob"]
+
+# Tag applied to all resources
+environment = "dev"
+
+# Email to receive billing alerts when S3 costs exceed $10/month
+alert_email = "you@example.com"
