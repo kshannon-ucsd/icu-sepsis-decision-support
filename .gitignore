@@ -35,3 +35,11 @@ Thumbs.db
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+# Lock file is safe to commit (tracks provider versions)
+# !.terraform.lock.hcl
