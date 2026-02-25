@@ -154,13 +154,13 @@ def patient_detail(request, subject_id, stay_id, hadm_id):
     procedures = []
 
     if current_hour >= 0:
-        # --- Vitalsigns for Plotly chart ---
+        # --- Vitalsigns for Plotly chart (include data through displayed time) ---
         vitalsigns_qs = VitalsignHourly.objects.filter(
             subject_id=subject_id,
             stay_id=stay_id,
             charttime_hour__month=3,
             charttime_hour__day=13,
-            charttime_hour__hour__lte=current_hour,
+            charttime_hour__hour__lte=min(current_hour + 1, 23),
         ).order_by('charttime_hour')
 
         vitalsigns_list = []
@@ -175,13 +175,13 @@ def patient_detail(request, subject_id, stay_id, hadm_id):
 
         vitalsigns_json = json.dumps(vitalsigns_list, cls=DjangoJSONEncoder)
 
-        # --- Procedure events for the log (most recent first) ---
+        # --- Procedure events for the log (most recent first, through displayed time) ---
         procedures = list(ProcedureeventsHourly.objects.filter(
             subject_id=subject_id,
             stay_id=stay_id,
             charttime_hour__month=3,
             charttime_hour__day=13,
-            charttime_hour__hour__lte=current_hour,
+            charttime_hour__hour__lte=min(current_hour + 1, 23),
             itemid__isnull=False,
         ).order_by(F('charttime').desc(nulls_last=True)).values(
             'charttime',
