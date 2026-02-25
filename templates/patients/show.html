@@ -13,7 +13,7 @@
     <span id="current-time" class="sim-time">{{ current_time_display }}</span>
     <button id="decrement-btn" class="btn btn-primary">-1</button>
     <button id="advance-btn" class="btn btn-primary">+1</button>
-    <button id="reset-btn" class="btn btn-secondary">Reset</button>
+    <button id="reset-btn" class="btn btn-primary btn-sm">Reset</button>
 </div>
 {% endblock %}
 
@@ -50,6 +50,20 @@
         <div>
             <p class="patient-field-label">Admission Time</p>
             <p class="patient-field-value">{{ patient.intime|time:"H:i"|default:"-" }}</p>
+        </div>
+        <div>
+            <p class="patient-field-label">Comorbidity</p>
+            <p id="comorbidity-group" class="patient-field-value">{% if prediction_as_of_iso %}...{% else %}—{% endif %}</p>
+        </div>
+        <div>
+            <p class="patient-field-label">Prediction</p>
+            <p class="patient-field-value">
+                {% if prediction_as_of_iso %}
+                <a id="prediction-btn" href="{% url 'patients:prediction_page' patient.subject_id patient.stay_id patient.hadm_id %}" class="btn btn-primary btn-sm">...</a>
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
+            </p>
         </div>
     </div>
 </div>
@@ -120,27 +134,6 @@
         </div>
     </div>
 
-</div>
-
-<!-- Predictions: risk_score + comorbidity_group -->
-<div class="card prediction-card">
-    <div class="card-header">
-        <h2>Predictions</h2>
-    </div>
-    <div id="prediction-panel" class="prediction-panel">
-        {% if prediction_as_of_iso %}
-        <div>
-            <p class="prediction-field-label">Risk Score</p>
-            <p id="risk-score" class="prediction-field-value">...</p>
-        </div>
-        <div>
-            <p class="prediction-field-label">Comorbidity Group</p>
-            <p id="comorbidity-group" class="prediction-field-value">...</p>
-        </div>
-        {% else %}
-        <p class="text-muted">Press <strong>+1</strong> to start the simulation and load predictions.</p>
-        {% endif %}
-    </div>
 </div>
 
 <!-- Plotly.js from CDN -->
@@ -281,32 +274,30 @@ if (vitalsData.length > 0) {
     resetBtn.addEventListener('click', () => postTime(resetUrl, resetBtn, 'Reset'));
 
     // =========================================================================
-    // Prediction: fetch risk_score + comorbidity_group
+    // Patient Details: Comorbidity + Prediction button — same AWS endpoint as before
     // =========================================================================
     const predUrl = config.predictionUrl;
     if (predUrl) {
         fetch(predUrl)
             .then(response => response.json())
             .then(data => {
-                const riskEl = document.getElementById('risk-score');
-                const groupEl = document.getElementById('comorbidity-group');
-                
-                // Check if response contains an error
+                const comorbidityEl = document.getElementById('comorbidity-group');
+                const btnEl = document.getElementById('prediction-btn');
                 if (data.error) {
-                    if (riskEl) riskEl.textContent = 'N/A';
-                    if (groupEl) groupEl.textContent = 'Not configured';
+                    if (comorbidityEl) comorbidityEl.textContent = 'N/A';
+                    if (btnEl) btnEl.textContent = 'N/A';
                     console.warn('Prediction error:', data.error);
                 } else {
-                    if (riskEl) riskEl.textContent = data.risk_score != null ? data.risk_score.toFixed(2) : '-';
-                    if (groupEl) groupEl.textContent = data.comorbidity_group || '-';
+                    if (comorbidityEl) comorbidityEl.textContent = data.comorbidity_group || '-';
+                    if (btnEl) btnEl.textContent = data.risk_score != null ? data.risk_score.toFixed(2) : '—';
                 }
             })
-            .catch((error) => {
-                const riskEl = document.getElementById('risk-score');
-                const groupEl = document.getElementById('comorbidity-group');
-                if (riskEl) riskEl.textContent = 'N/A';
-                if (groupEl) groupEl.textContent = 'Error';
-                console.error('Prediction fetch error:', error);
+            .catch((err) => {
+                const comorbidityEl = document.getElementById('comorbidity-group');
+                const btnEl = document.getElementById('prediction-btn');
+                if (comorbidityEl) comorbidityEl.textContent = 'Error';
+                if (btnEl) btnEl.textContent = 'Error';
+                console.error('Prediction fetch error:', err);
             });
     }
 })();

@@ -1,10 +1,4 @@
--- 11_fisi9t_feature_matrix_hourly.sql
--- Materialized view: hourly feature matrix for each patient
-
-DROP MATERIALIZED VIEW IF EXISTS mimiciv_derived.fisi9t_feature_matrix_hourly CASCADE;
-
-CREATE MATERIALIZED VIEW mimiciv_derived.fisi9t_feature_matrix_hourly AS (
-
+CREATE MATERIALIZED VIEW mimiciv_derived.fisi9t_feature_matrix_hourly AS(
 WITH stay_window AS (
          SELECT upp.subject_id,
             upp.stay_id,
@@ -17,7 +11,7 @@ WITH stay_window AS (
             upp.outtime,
             date_trunc('hour'::text, upp.intime) AS start_hour,
             date_trunc('hour'::text, upp.outtime - '00:00:01'::interval) AS end_hour
-           FROM fisi9t_unique_patient_profile upp
+           FROM mimiciv_derived.fisi9t_unique_patient_profile upp
           WHERE upp.intime IS NOT NULL AND upp.outtime IS NOT NULL AND upp.outtime > upp.intime
         ), hour_grid AS (
          SELECT sw.subject_id,
@@ -32,6 +26,11 @@ WITH stay_window AS (
             gs.gs AS charttime_hour
            FROM stay_window sw
              CROSS JOIN LATERAL generate_series(sw.start_hour, sw.end_hour, '01:00:00'::interval) gs(gs)
+        ), sepsis_stays AS (
+         SELECT DISTINCT s3.subject_id,
+            s3.stay_id
+           FROM mimiciv_derived.sepsis3 s3
+          WHERE s3.subject_id IS NOT NULL AND s3.stay_id IS NOT NULL
         )
  SELECT hg.subject_id,
     hg.stay_id,
@@ -90,14 +89,24 @@ WITH stay_window AS (
     s.cardiovascular_24hours,
     s.cns_24hours,
     s.renal_24hours,
-    s.sofa_24hours
+    s.sofa_24hours,
+        CASE
+            WHEN ss.stay_id IS NOT NULL THEN 1
+            ELSE 0
+        END AS sepsis
    FROM hour_grid hg
-     LEFT JOIN fisi9t_vitalsign_hourly v ON v.subject_id = hg.subject_id AND v.stay_id = hg.stay_id AND v.charttime_hour = hg.charttime_hour
-     LEFT JOIN fisi9t_chemistry_hourly ch ON ch.subject_id = hg.subject_id AND ch.stay_id = hg.stay_id AND ch.charttime_hour = hg.charttime_hour
-     LEFT JOIN fisi9t_coagulation_hourly co ON co.subject_id = hg.subject_id AND co.stay_id = hg.stay_id AND co.charttime_hour = hg.charttime_hour
-     LEFT JOIN fisi9t_sofa_hourly s ON s.subject_id = hg.subject_id AND s.stay_id = hg.stay_id AND s.charttime_hour = hg.charttime_hour);
+     LEFT JOIN sepsis_stays ss ON ss.subject_id = hg.subject_id AND ss.stay_id = hg.stay_id
+     LEFT JOIN mimiciv_derived.fisi9t_vitalsign_hourly v ON v.subject_id = hg.subject_id AND v.stay_id = hg.stay_id AND v.charttime_hour = hg.charttime_hour
+     LEFT JOIN mimiciv_derived.fisi9t_chemistry_hourly ch ON ch.subject_id = hg.subject_id AND ch.stay_id = hg.stay_id AND ch.charttime_hour = hg.charttime_hour
+     LEFT JOIN mimiciv_derived.fisi9t_coagulation_hourly co ON co.subject_id = hg.subject_id AND co.stay_id = hg.stay_id AND co.charttime_hour = hg.charttime_hour
+     LEFT JOIN mimiciv_derived.fisi9t_sofa_hourly s ON s.subject_id = hg.subject_id AND s.stay_id = hg.stay_id AND s.charttime_hour = hg.charttime_hour);
 
-CREATE INDEX idx_fisi9t_feature_matrix_hourly_subject_id ON mimiciv_derived.fisi9t_feature_matrix_hourly (subject_id);
-CREATE INDEX idx_fisi9t_feature_matrix_hourly_stay_id ON mimiciv_derived.fisi9t_feature_matrix_hourly (stay_id);
-CREATE INDEX idx_fisi9t_feature_matrix_hourly_hadm_id ON mimiciv_derived.fisi9t_feature_matrix_hourly (hadm_id);
-CREATE INDEX idx_fisi9t_feature_matrix_hourly_charttime_hour ON mimiciv_derived.fisi9t_feature_matrix_hourly (charttime_hour);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fisi9t_feature_matrix_hourly_pk
+ON mimiciv_derived.fisi9t_feature_matrix_hourly (subject_id, stay_id, charttime_hour);
+
+CREATE INDEX IF NOT EXISTS idx_fisi9t_feature_matrix_hourly_stay
+ON mimiciv_derived.fisi9t_feature_matrix_hourly (stay_id, charttime_hour);
+
+-- Optional (helps when filtering by label):
+CREATE INDEX IF NOT EXISTS idx_fisi9t_feature_matrix_hourly_sepsis
+ON mimiciv_derived.fisi9t_feature_matrix_hourly (sepsis);

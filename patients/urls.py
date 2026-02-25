@@ -15,6 +15,7 @@ urlpatterns = [
     path('decrement-time/', views.decrement_time, name='decrement_time'),
     path('reset-simulation/', views.reset_simulation, name='reset_simulation'),
     path('<int:subject_id>/<int:stay_id>/<int:hadm_id>/', views.patient_detail, name='detail'),
+    path('<int:subject_id>/<int:stay_id>/<int:hadm_id>/prediction-page/', views.prediction_page, name='prediction_page'),
 
     # JSON API Endpoints (Features for ML)
     path('<int:subject_id>/<int:stay_id>/<int:hadm_id>/features/static', api.get_static_features, name='features_static'),

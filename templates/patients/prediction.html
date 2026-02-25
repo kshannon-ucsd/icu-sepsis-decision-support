@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ patient.display_name }} - Prediction - ICU Sepsis Decision Support{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'patient.css' %}">
+{% endblock %}
+
+{% block navbar_clock %}
+<div class="app-navbar__clock">
+    <a href="{% url 'patients:index' %}" class="btn btn-primary btn-sm">&larr; Back to List</a>
+    <a href="{% url 'patients:detail' patient.subject_id patient.stay_id patient.hadm_id %}" class="btn btn-primary btn-sm">Patient</a>
+    <span id="current-time" class="sim-time">{{ current_time_display }}</span>
+    <button id="decrement-btn" class="btn btn-primary">-1</button>
+    <button id="advance-btn" class="btn btn-primary">+1</button>
+    <button id="reset-btn" class="btn btn-primary btn-sm">Reset</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Patient Details (same as patient detail page) -->
+<div class="card">
+    <div class="card-header">
+        <h2>Patient Details</h2>
+    </div>
+
+    <div class="patient-detail-grid">
+        <div>
+            <p class="patient-field-label">Patient</p>
+            <p class="patient-field-value">{{ patient.display_name }}</p>
+        </div>
+        <div>
+            <p class="patient-field-label">Age</p>
+            <p class="patient-field-value">{{ patient.anchor_age|default:"-" }}</p>
+        </div>
+        <div>
+            <p class="patient-field-label">Gender</p>
+            <p class="patient-field-value">
+                {% if patient.gender == 'M' %}Male{% elif patient.gender == 'F' %}Female{% else %}{{ patient.gender|default:"-" }}{% endif %}
+            </p>
+        </div>
+        <div>
+            <p class="patient-field-label">Race</p>
+            <p class="patient-field-value">{{ patient.race|default:"-" }}</p>
+        </div>
+        <div>
+            <p class="patient-field-label">First Care Unit</p>
+            <p class="patient-field-value">{{ patient.first_careunit|default:"-" }}</p>
+        </div>
+        <div>
+            <p class="patient-field-label">Admission Time</p>
+            <p class="patient-field-value">{{ patient.intime|time:"H:i"|default:"-" }}</p>
+        </div>
+        <div>
+            <p class="patient-field-label">Comorbidity</p>
+            <p id="comorbidity-group" class="patient-field-value">{% if prediction_as_of_iso %}...{% else %}—{% endif %}</p>
+        </div>
+        <div>
+            <p class="patient-field-label">Risk Score</p>
+            <p id="risk-score-detail" class="patient-field-value">{% if prediction_as_of_iso %}...{% else %}—{% endif %}</p>
+        </div>
+    </div>
+</div>
+
+<!-- Prediction: risk_score + comorbidity_group (same as former Predictions card) -->
+<div class="card prediction-card">
+    <div class="card-header">
+        <h2>Prediction</h2>
+    </div>
+    <div class="prediction-panel">
+        {% if prediction_as_of_iso %}
+        <div>
+            <p class="prediction-field-label">Risk Score</p>
+            <p id="prediction-panel-risk" class="prediction-field-value">...</p>
+        </div>
+        <div>
+            <p class="prediction-field-label">Comorbidity Group</p>
+            <p id="prediction-panel-comorbidity" class="prediction-field-value">...</p>
+        </div>
+        {% else %}
+        <p class="text-muted">Press <strong>+1</strong> to start the simulation and load predictions.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div id="page-config" class="hidden" data-csrf-token="{{ csrf_token }}" data-advance-url="{% url 'patients:advance_time' %}" data-decrement-url="{% url 'patients:decrement_time' %}" data-reset-url="{% url 'patients:reset_simulation' %}" {% if prediction_as_of_iso %}data-prediction-url="{% url 'patients:prediction' patient.subject_id patient.stay_id patient.hadm_id %}?as_of={{ prediction_as_of_iso|urlencode }}&window_hours=24"{% endif %}></div>
+
+<script type="application/javascript">
+(function() {
+    const config = document.getElementById('page-config');
+    if (!config) return;
+    const advanceUrl = config.dataset.advanceUrl;
+    const decrementUrl = config.dataset.decrementUrl;
+    const resetUrl = config.dataset.resetUrl;
+    const csrfToken = config.dataset.csrfToken;
+    const advanceBtn = document.getElementById('advance-btn');
+    const decrementBtn = document.getElementById('decrement-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    if (!advanceBtn || !decrementBtn || !resetBtn) return;
+
+    function postTime(url, btn, btnText) {
+        btn.disabled = true;
+        btn.textContent = '...';
+        fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.current_time) document.getElementById('current-time').textContent = data.current_time;
+            btn.disabled = false;
+            btn.textContent = btnText;
+            setTimeout(() => location.reload(), 800);
+        })
+        .catch(err => {
+            alert('Error: ' + err.message);
+            btn.disabled = false;
+            btn.textContent = btnText;
+        });
+    }
+    advanceBtn.addEventListener('click', () => postTime(advanceUrl, advanceBtn, '+1'));
+    decrementBtn.addEventListener('click', () => postTime(decrementUrl, decrementBtn, '-1'));
+    resetBtn.addEventListener('click', () => postTime(resetUrl, resetBtn, 'Reset'));
+
+    // Same as patient view: fetch prediction endpoint and fill Risk Score + Comorbidity
+    const predUrl = config.dataset.predictionUrl;
+    if (predUrl) {
+        fetch(predUrl)
+            .then(response => response.json())
+            .then(data => {
+                const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+                if (data.error) {
+                    set('comorbidity-group', 'N/A');
+                    set('risk-score-detail', 'N/A');
+                    set('prediction-panel-risk', 'N/A');
+                    set('prediction-panel-comorbidity', 'N/A');
+                    console.warn('Prediction error:', data.error);
+                } else {
+                    const comorbidity = data.comorbidity_group || '—';
+                    const risk = data.risk_score != null ? data.risk_score.toFixed(2) : '—';
+                    set('comorbidity-group', comorbidity);
+                    set('risk-score-detail', risk);
+                    set('prediction-panel-risk', risk);
+                    set('prediction-panel-comorbidity', comorbidity);
+                }
+            })
+            .catch(err => {
+                const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+                set('comorbidity-group', 'Error');
+                set('risk-score-detail', 'Error');
+                set('prediction-panel-risk', 'Error');
+                set('prediction-panel-comorbidity', 'Error');
+                console.error('Prediction fetch error:', err);
+            });
+    }
+})();
+</script>
+{% endblock %}
