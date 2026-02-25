@@ -341,3 +341,35 @@ def advance_time(request):
     }
 
     return JsonResponse(response_data)
+
+
+@require_POST
+def decrement_time(request):
+    """
+    API endpoint: move the simulation clock back 1 hour.
+    POST /patients/decrement-time/
+    """
+    _simulation['current_hour'] -= 1
+    current_hour = _simulation['current_hour']
+
+    if current_hour < -1:
+        _simulation['current_hour'] = -1
+        current_hour = -1
+
+    return JsonResponse({
+        'current_hour': current_hour,
+        'current_time': _display_time(current_hour),
+    })
+
+
+@require_POST
+def reset_simulation(request):
+    """
+    API endpoint: reset the simulation to hour -1 (no patients admitted).
+    POST /patients/reset-simulation/
+    """
+    _simulation['current_hour'] = -1
+    return JsonResponse({
+        'current_hour': -1,
+        'current_time': _display_time(-1),
+    })

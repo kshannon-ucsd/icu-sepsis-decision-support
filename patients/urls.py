@@ -12,6 +12,8 @@ urlpatterns = [
     # UI Views
     path('', views.patient_list, name='index'),
     path('advance-time/', views.advance_time, name='advance_time'),
+    path('decrement-time/', views.decrement_time, name='decrement_time'),
+    path('reset-simulation/', views.reset_simulation, name='reset_simulation'),
     path('<int:subject_id>/<int:stay_id>/<int:hadm_id>/', views.patient_detail, name='detail'),
 
     # JSON API Endpoints (Features for ML)

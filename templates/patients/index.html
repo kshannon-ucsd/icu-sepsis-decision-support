@@ -10,7 +10,9 @@
 {% block navbar_clock %}
 <div class="app-navbar__clock">
     <span id="current-time" class="sim-time">{{ current_time_display }}</span>
+    <button id="decrement-btn" class="btn btn-primary">-1</button>
     <button id="advance-btn" class="btn btn-primary">+1</button>
+    <button id="reset-btn" class="btn btn-secondary">Reset</button>
 </div>
 {% endblock %}
 
@@ -96,29 +98,34 @@
 <script>
 (function() {
     const advanceBtn = document.getElementById('advance-btn');
+    const decrementBtn = document.getElementById('decrement-btn');
+    const resetBtn = document.getElementById('reset-btn');
     const currentTimeEl = document.getElementById('current-time');
     const csrfToken = '{{ csrf_token }}';
 
-    advanceBtn.addEventListener('click', function() {
-        advanceBtn.disabled = true;
-        advanceBtn.textContent = '...';
-
-        fetch('{% url "patients:advance_time" %}', {
+    function postTime(url, btn, btnText) {
+        btn.disabled = true;
+        btn.textContent = '...';
+        fetch(url, {
             method: 'POST',
             headers: { 'X-CSRFToken': csrfToken },
         })
         .then(response => response.json())
         .then(data => {
             if (data.current_time) currentTimeEl.textContent = data.current_time;
-            advanceBtn.disabled = false;
-            advanceBtn.textContent = '+1';
+            btn.disabled = false;
+            btn.textContent = btnText;
             setTimeout(() => location.reload(), 800);
         })
         .catch(err => {
-            advanceBtn.disabled = false;
-            advanceBtn.textContent = '+1';
+            btn.disabled = false;
+            btn.textContent = btnText;
         });
-    });
+    }
+
+    advanceBtn.addEventListener('click', () => postTime('{% url "patients:advance_time" %}', advanceBtn, '+1'));
+    decrementBtn.addEventListener('click', () => postTime('{% url "patients:decrement_time" %}', decrementBtn, '-1'));
+    resetBtn.addEventListener('click', () => postTime('{% url "patients:reset_simulation" %}', resetBtn, 'Reset'));
 })();
 </script>
 {% endblock %}

@@ -11,7 +11,9 @@
 <div class="app-navbar__clock">
     <a href="{% url 'patients:index' %}" class="btn btn-primary btn-sm">&larr; Back to List</a>
     <span id="current-time" class="sim-time">{{ current_time_display }}</span>
+    <button id="decrement-btn" class="btn btn-primary">-1</button>
     <button id="advance-btn" class="btn btn-primary">+1</button>
+    <button id="reset-btn" class="btn btn-secondary">Reset</button>
 </div>
 {% endblock %}
 
@@ -145,7 +147,7 @@
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 
 <script type="application/json" id="vitalsigns-data">{{ vitalsigns_json|safe }}</script>
-<div id="page-config" class="hidden" data-csrf-token="{{ csrf_token }}" data-advance-url="{% url 'patients:advance_time' %}" {% if prediction_as_of_iso %}data-prediction-url="{% url 'patients:prediction' patient.subject_id patient.stay_id patient.hadm_id %}?as_of={{ prediction_as_of_iso|urlencode }}&window_hours=24"{% endif %}></div>
+<div id="page-config" class="hidden" data-csrf-token="{{ csrf_token }}" data-advance-url="{% url 'patients:advance_time' %}" data-decrement-url="{% url 'patients:decrement_time' %}" data-reset-url="{% url 'patients:reset_simulation' %}" {% if prediction_as_of_iso %}data-prediction-url="{% url 'patients:prediction' patient.subject_id patient.stay_id patient.hadm_id %}?as_of={{ prediction_as_of_iso|urlencode }}&window_hours=24"{% endif %}></div>
 
 <script>
 (function() {
@@ -242,12 +244,41 @@ if (vitalsData.length > 0) {
 }
 
     // =========================================================================
-    // +1 Button — advance time, then reload to refresh chart + log
+    // Time controls — advance, decrement, reset
     // =========================================================================
     const advanceBtn = document.getElementById('advance-btn');
+    const decrementBtn = document.getElementById('decrement-btn');
+    const resetBtn = document.getElementById('reset-btn');
     const config = document.getElementById('page-config').dataset;
     const csrfToken = config.csrfToken;
     const advanceUrl = config.advanceUrl;
+    const decrementUrl = config.decrementUrl;
+    const resetUrl = config.resetUrl;
+
+    function postTime(url, btn, btnText) {
+        btn.disabled = true;
+        btn.textContent = '...';
+        fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.current_time) document.getElementById('current-time').textContent = data.current_time;
+            btn.disabled = false;
+            btn.textContent = btnText;
+            setTimeout(() => location.reload(), 800);
+        })
+        .catch(err => {
+            alert('Error: ' + err.message);
+            btn.disabled = false;
+            btn.textContent = btnText;
+        });
+    }
+
+    advanceBtn.addEventListener('click', () => postTime(advanceUrl, advanceBtn, '+1'));
+    decrementBtn.addEventListener('click', () => postTime(decrementUrl, decrementBtn, '-1'));
+    resetBtn.addEventListener('click', () => postTime(resetUrl, resetBtn, 'Reset'));
 
     // =========================================================================
     // Prediction: fetch risk_score + comorbidity_group
@@ -278,29 +309,6 @@ if (vitalsData.length > 0) {
                 console.error('Prediction fetch error:', error);
             });
     }
-
-    advanceBtn.addEventListener('click', function() {
-        advanceBtn.disabled = true;
-        advanceBtn.textContent = '...';
-
-        fetch(advanceUrl, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': csrfToken },
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Update displayed time immediately, then reload for fresh data
-            if (data.current_time) {
-                document.getElementById('current-time').textContent = data.current_time;
-            }
-            location.reload();
-        })
-        .catch(err => {
-            alert('Error advancing time: ' + err.message);
-            advanceBtn.disabled = false;
-            advanceBtn.textContent = '+1';
-        });
-    });
 })();
 </script>
 {% endblock %}
