@@ -175,15 +175,21 @@ def patient_detail(request, subject_id, stay_id, hadm_id):
 
         vitalsigns_json = json.dumps(vitalsigns_list, cls=DjangoJSONEncoder)
 
-        # --- Procedure events for the log (most recent first, through displayed time) ---
+        # --- Procedure events: use charttime (exact time) to exclude events after displayed time ---
+        patient_year = patient.intime.year if patient.intime else 2025
+        if current_hour >= 23:
+            proc_cutoff = datetime(patient_year, 3, 14, 0, 0, 0)
+        else:
+            proc_cutoff = datetime(patient_year, 3, 13, min(current_hour + 1, 23), 0, 0)
         procedures = list(ProcedureeventsHourly.objects.filter(
             subject_id=subject_id,
             stay_id=stay_id,
             charttime_hour__month=3,
             charttime_hour__day=13,
             charttime_hour__hour__lte=min(current_hour + 1, 23),
-            itemid__isnull=False,
-        ).order_by(F('charttime').desc(nulls_last=True)).values(
+        ).filter(
+            Q(charttime__lte=proc_cutoff) | Q(charttime__isnull=True)
+        ).filter(itemid__isnull=False).order_by(F('charttime').desc(nulls_last=True)).values(
             'charttime',
             'item_label', 'value', 'valueuom',
             'ordercategoryname', 'statusdescription',
