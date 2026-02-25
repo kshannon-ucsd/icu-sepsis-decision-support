@@ -8,7 +8,7 @@ from datetime import datetime
 from django.shortcuts import render, get_object_or_404
 from django.core.paginator import Paginator
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.models import Q
+from django.db.models import Q, F
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 
@@ -175,7 +175,7 @@ def patient_detail(request, subject_id, stay_id, hadm_id):
 
         vitalsigns_json = json.dumps(vitalsigns_list, cls=DjangoJSONEncoder)
 
-        # --- Procedure events for the log ---
+        # --- Procedure events for the log (most recent first) ---
         procedures = list(ProcedureeventsHourly.objects.filter(
             subject_id=subject_id,
             stay_id=stay_id,
@@ -183,8 +183,8 @@ def patient_detail(request, subject_id, stay_id, hadm_id):
             charttime_hour__day=13,
             charttime_hour__hour__lte=current_hour,
             itemid__isnull=False,
-        ).order_by('charttime_hour').values(
-            'charttime_hour', 'charttime',
+        ).order_by(F('charttime').desc(nulls_last=True)).values(
+            'charttime',
             'item_label', 'value', 'valueuom',
             'ordercategoryname', 'statusdescription',
         ))
