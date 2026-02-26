@@ -112,10 +112,9 @@ def patient_list(request):
     current_hour = _simulation['current_hour']
     patients = _get_admitted_patients(current_hour).order_by('subject_id')
 
-    # Pagination - 25 patients per page
-    paginator = Paginator(patients, 25)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
+    # All patients on one page (no pagination)
+    paginator = Paginator(patients, 10000)
+    page_obj = paginator.get_page(1)
 
     # Attach display names (IDs hidden from clinicians)
     name_mapping = get_display_name_mapping()
@@ -125,12 +124,21 @@ def patient_list(request):
             f"Patient {p.subject_id}"
         )
 
+    # Prediction "as_of" for AJAX (same as patient detail)
+    if current_hour < 0:
+        prediction_as_of_iso = None
+    elif current_hour >= 23:
+        prediction_as_of_iso = "2025-03-14T00:00:00"
+    else:
+        prediction_as_of_iso = f"2025-03-13T{current_hour + 1:02d}:00:00"
+
     context = {
         'page_obj': page_obj,
         'total_patients': patients.count(),
         'cohort_active': get_cohort_filter() is not None,
         'current_hour': current_hour,
         'current_time_display': _display_time(current_hour),
+        'prediction_as_of_iso': prediction_as_of_iso,
     }
     return render(request, 'patients/index.html', context)
 

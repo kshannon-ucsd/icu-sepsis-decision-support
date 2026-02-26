@@ -33,18 +33,68 @@
     <table class="table">
         <thead>
             <tr>
-                <th>Patient</th>
-                <th>Age</th>
-                <th>Gender</th>
-                <th>Race</th>
-                <th>Care Unit</th>
-                <th>Admission Time</th>
+                <th class="sortable-header" data-sort-column="patient" data-sort-type="string">
+                    <span>Patient</span>
+                    <span class="sort-icon" title="Sort">⇅</span>
+                    <div class="sort-dropdown" role="menu">
+                        <button type="button" data-sort="asc">A–Z</button>
+                        <button type="button" data-sort="desc">Z–A</button>
+                    </div>
+                </th>
+                <th class="sortable-header" data-sort-column="age" data-sort-type="number">
+                    <span>Age</span>
+                    <span class="sort-icon" title="Sort">⇅</span>
+                    <div class="sort-dropdown" role="menu">
+                        <button type="button" data-sort="asc">Lowest first</button>
+                        <button type="button" data-sort="desc">Highest first</button>
+                    </div>
+                </th>
+                <th class="sortable-header" data-sort-column="gender" data-sort-type="string">
+                    <span>Gender</span>
+                    <span class="sort-icon" title="Sort">⇅</span>
+                    <div class="sort-dropdown" role="menu">
+                        <button type="button" data-sort="asc">A–Z</button>
+                        <button type="button" data-sort="desc">Z–A</button>
+                    </div>
+                </th>
+                <th class="sortable-header" data-sort-column="race" data-sort-type="string">
+                    <span>Race</span>
+                    <span class="sort-icon" title="Sort">⇅</span>
+                    <div class="sort-dropdown" role="menu">
+                        <button type="button" data-sort="asc">A–Z</button>
+                        <button type="button" data-sort="desc">Z–A</button>
+                    </div>
+                </th>
+                <th class="sortable-header" data-sort-column="careunit" data-sort-type="string">
+                    <span>Care Unit</span>
+                    <span class="sort-icon" title="Sort">⇅</span>
+                    <div class="sort-dropdown" role="menu">
+                        <button type="button" data-sort="asc">A–Z</button>
+                        <button type="button" data-sort="desc">Z–A</button>
+                    </div>
+                </th>
+                <th class="sortable-header" data-sort-column="admission" data-sort-type="string">
+                    <span>Admission Time</span>
+                    <span class="sort-icon" title="Sort">⇅</span>
+                    <div class="sort-dropdown" role="menu">
+                        <button type="button" data-sort="asc">Earliest first</button>
+                        <button type="button" data-sort="desc">Latest first</button>
+                    </div>
+                </th>
+                <th class="sortable-header" data-sort-column="prediction" data-sort-type="number">
+                    <span>Prediction</span>
+                    <span class="sort-icon" title="Sort">⇅</span>
+                    <div class="sort-dropdown" role="menu">
+                        <button type="button" data-sort="desc">Highest first</button>
+                        <button type="button" data-sort="asc">Lowest first</button>
+                    </div>
+                </th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
             {% for patient in page_obj %}
-            <tr>
+            <tr data-patient="{{ patient.display_name|default:'' }}" data-age="{{ patient.anchor_age|default:'' }}" data-gender="{% if patient.gender == 'M' %}Male{% elif patient.gender == 'F' %}Female{% else %}{{ patient.gender|default:'' }}{% endif %}" data-race="{{ patient.race|default:'' }}" data-careunit="{{ patient.first_careunit|default:'' }}" data-admission="{{ patient.intime|time:'H:i'|default:'' }}" data-risk-score="">
                 <td><strong>{{ patient.display_name }}</strong></td>
                 <td>{{ patient.anchor_age|default:"-" }}</td>
                 <td>
@@ -60,30 +110,22 @@
                 <td>{{ patient.first_careunit|default:"-" }}</td>
                 <td class="text-muted">{{ patient.intime|time:"H:i"|default:"-" }}</td>
                 <td>
+                    {% if prediction_as_of_iso %}
+                    <a class="btn btn-secondary btn-sm management-prediction-btn" 
+                       href="{% url 'patients:prediction_page' patient.subject_id patient.stay_id patient.hadm_id %}"
+                       data-prediction-url="{% url 'patients:prediction' patient.subject_id patient.stay_id patient.hadm_id %}?as_of={{ prediction_as_of_iso|urlencode }}&window_hours=24">...</a>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td>
                     <a href="{% url 'patients:detail' patient.subject_id patient.stay_id patient.hadm_id %}" 
-                       class="btn btn-primary btn-sm">View</a>
+                       class="btn btn-secondary btn-sm">View</a>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-    
-    <!-- Pagination -->
-    <div class="pagination">
-        {% if page_obj.has_previous %}
-            <a href="?page=1">&laquo; First</a>
-            <a href="?page={{ page_obj.previous_page_number }}">Previous</a>
-        {% endif %}
-        
-        <span class="current">
-            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
-        </span>
-        
-        {% if page_obj.has_next %}
-            <a href="?page={{ page_obj.next_page_number }}">Next</a>
-            <a href="?page={{ page_obj.paginator.num_pages }}">Last &raquo;</a>
-        {% endif %}
-    </div>
     {% else %}
     <p class="text-muted">
         {% if current_hour < 0 %}
@@ -126,6 +168,108 @@
     advanceBtn.addEventListener('click', () => postTime('{% url "patients:advance_time" %}', advanceBtn, '+1'));
     decrementBtn.addEventListener('click', () => postTime('{% url "patients:decrement_time" %}', decrementBtn, '-1'));
     resetBtn.addEventListener('click', () => postTime('{% url "patients:reset_simulation" %}', resetBtn, 'Reset'));
+
+    // Prediction buttons: same endpoint as patient view, fill risk score
+    document.querySelectorAll('[data-prediction-url]').forEach(btn => {
+        const url = btn.dataset.predictionUrl;
+        if (!url) return;
+        const row = btn.closest('tr');
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    btn.textContent = 'N/A';
+                    row.dataset.riskScore = '';
+                } else {
+                    const val = data.risk_score != null ? data.risk_score : null;
+                    btn.textContent = val != null ? val.toFixed(2) : '—';
+                    row.dataset.riskScore = val != null ? String(val) : '';
+                }
+            })
+            .catch(() => {
+                btn.textContent = 'Error';
+                row.dataset.riskScore = '';
+            });
+    });
+
+    // Sortable columns
+    const tbody = document.querySelector('.table tbody');
+    const sortHeaders = document.querySelectorAll('.sortable-header');
+    if (tbody && sortHeaders.length) {
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.sortable-header')) {
+                sortHeaders.forEach(h => h.querySelector('.sort-dropdown')?.classList.remove('show'));
+            }
+        });
+
+        function sortRows(column, type, dir) {
+            sortHeaders.forEach(h => h.querySelector('.sort-dropdown')?.classList.remove('show'));
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            if (rows.length === 0) return;
+
+            const key = column === 'age' ? 'age' : column === 'patient' ? 'patient' : column === 'gender' ? 'gender' : column === 'race' ? 'race' : column === 'careunit' ? 'careunit' : column === 'admission' ? 'admission' : 'riskScore';
+
+            const getVal = (row) => {
+                let v = row.dataset[key] ?? '';
+                if (type === 'number') {
+                    if (v === '' || v === undefined) return -Infinity;
+                    const n = parseFloat(v);
+                    return isNaN(n) ? -Infinity : n;
+                }
+                return (v || '').toLowerCase();
+            };
+
+            rows.sort((a, b) => {
+                const va = getVal(a);
+                const vb = getVal(b);
+                let cmp = 0;
+                if (type === 'number') {
+                    cmp = va === vb ? 0 : va < vb ? -1 : 1;
+                } else {
+                    cmp = va.localeCompare(vb);
+                }
+                return dir === 'desc' ? -cmp : cmp;
+            });
+
+            const origIndex = new Map();
+            rows.forEach((r, i) => origIndex.set(r, i));
+            const oldRects = rows.map(r => r.getBoundingClientRect());
+
+            rows.forEach(r => tbody.appendChild(r));
+            const newRects = rows.map(r => r.getBoundingClientRect());
+
+            rows.forEach((r, i) => {
+                r.classList.add('sorting');
+                const oldI = origIndex.get(r);
+                const dy = oldRects[oldI].top - newRects[i].top;
+                r.style.transform = `translateY(${dy}px)`;
+            });
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    rows.forEach(r => { r.style.transform = ''; });
+                    setTimeout(() => rows.forEach(r => r.classList.remove('sorting')), 350);
+                });
+            });
+        }
+
+        sortHeaders.forEach(header => {
+            const column = header.dataset.sortColumn;
+            const type = header.dataset.sortType || 'string';
+            const dropdown = header.querySelector('.sort-dropdown');
+            header.addEventListener('click', (e) => {
+                if (e.target.closest('.sort-dropdown')) return;
+                sortHeaders.forEach(h => { if (h !== header) h.querySelector('.sort-dropdown')?.classList.remove('show'); });
+                dropdown?.classList.toggle('show');
+            });
+            dropdown?.querySelectorAll('button').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    sortRows(column, type, btn.dataset.sort);
+                });
+            });
+        });
+    }
 })();
 </script>
 {% endblock %}

@@ -59,7 +59,7 @@
             <p class="patient-field-label">Prediction</p>
             <p class="patient-field-value">
                 {% if prediction_as_of_iso %}
-                <a id="prediction-btn" href="{% url 'patients:prediction_page' patient.subject_id patient.stay_id patient.hadm_id %}" class="btn btn-primary btn-sm">...</a>
+                <a id="prediction-btn" href="{% url 'patients:prediction_page' patient.subject_id patient.stay_id patient.hadm_id %}" class="btn btn-secondary btn-sm">...</a>
                 {% else %}
                 <span class="text-muted">—</span>
                 {% endif %}
