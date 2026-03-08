@@ -34,26 +34,111 @@
             ? new BroadcastChannel('icu-sepsis-advance')
             : null;
 
-        function setAdvanceLoading(loading) {
+        var isProcessing = false;
+        var hasAskedForStatus = false;
+
+        function setAdvanceLoading(loading, skipBroadcast) {
+            isProcessing = loading;
             if (advanceBtn) {
                 advanceBtn.disabled = loading;
                 advanceBtn.textContent = loading ? '...' : '+1';
             }
+            // Store state in sessionStorage for new tabs
+            try {
+                if (loading) {
+                    sessionStorage.setItem('advance_loading', Date.now().toString());
+                    sessionStorage.setItem('advance_loading_active', '1');
+                } else {
+                    sessionStorage.removeItem('advance_loading');
+                    sessionStorage.removeItem('advance_loading_active');
+                }
+            } catch (e) {}
+            
+            // Broadcast to other tabs
+            if (channel && !skipBroadcast) {
+                if (loading) {
+                    channel.postMessage('advance_started');
+                } else {
+                    channel.postMessage('advance_done');
+                }
+            }
         }
+
+        // Periodically check for status updates (for tabs opened during processing)
+        function pollForActiveAdvance() {
+            if (hasAskedForStatus) return;
+            try {
+                var isActive = sessionStorage.getItem('advance_loading_active') === '1';
+                if (isActive) {
+                    setAdvanceLoading(true, true); // Don't broadcast to avoid loops
+                    if (channel) {
+                        hasAskedForStatus = true;
+                        channel.postMessage('advance_status_request');
+                        // Confirm or clear after 1 second
+                        setTimeout(function() {
+                            if (isProcessing && !advanceBtn.classList.contains('confirmed-processing')) {
+                                // Re-check storage once more
+                                var stillActive = sessionStorage.getItem('advance_loading_active') === '1';
+                                if (!stillActive) {
+                                    setAdvanceLoading(false, true);
+                                }
+                            }
+                        }, 1000);
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // Check if advance is in progress when tab loads (with timeout protection)
+        try {
+            var loadingTimestamp = sessionStorage.getItem('advance_loading');
+            if (loadingTimestamp) {
+                var age = Date.now() - parseInt(loadingTimestamp, 10);
+                // Only show loading if timestamp is recent (< 60 seconds)
+                if (age < 60000) {
+                    pollForActiveAdvance();
+                } else {
+                    // Stale state, clear it
+                    sessionStorage.removeItem('advance_loading');
+                    sessionStorage.removeItem('advance_loading_active');
+                }
+            }
+        } catch (e) {}
+
+        // Also poll shortly after page load to catch tabs opened during processing
+        setTimeout(pollForActiveAdvance, 100);
+        setTimeout(pollForActiveAdvance, 500);
 
         if (channel) {
             channel.onmessage = function(e) {
                 if (e.data === 'advance_started') {
-                    setAdvanceLoading(true);
+                    setAdvanceLoading(true, true); // Skip broadcast to avoid echo
+                    if (advanceBtn) advanceBtn.classList.add('confirmed-processing');
                 } else if (e.data === 'advance_done') {
+                    sessionStorage.removeItem('advance_loading');
+                    sessionStorage.removeItem('advance_loading_active');
                     location.reload();
+                } else if (e.data === 'advance_status_request') {
+                    // Respond if this tab is processing
+                    if (isProcessing && advanceBtn && advanceBtn.disabled) {
+                        channel.postMessage('advance_in_progress');
+                    }
+                } else if (e.data === 'advance_in_progress') {
+                    setAdvanceLoading(true, true); // Skip broadcast to avoid echo
+                    if (advanceBtn) advanceBtn.classList.add('confirmed-processing');
                 }
             };
         }
 
         advanceBtn.addEventListener('click', function() {
-            setAdvanceLoading(true);
-            if (channel) channel.postMessage('advance_started');
+            if (advanceBtn.disabled) return; // Prevent double-click
+            
+            if (advanceBtn.classList.contains('confirmed-processing')) {
+                advanceBtn.classList.remove('confirmed-processing');
+            }
+            
+            // Set loading state IMMEDIATELY before fetch
+            setAdvanceLoading(true, false);
 
             fetch(ds.advanceUrl, {
                 method: 'POST',
@@ -74,11 +159,11 @@
             .then(function(data) {
                 var el = document.getElementById('current-time');
                 if (el && data.current_time) el.textContent = data.current_time;
-                if (channel) channel.postMessage('advance_done');
+                setAdvanceLoading(false, false);
                 location.reload();
             })
             .catch(function(err) {
-                setAdvanceLoading(false);
+                setAdvanceLoading(false, false);
                 alert('Error advancing time: ' + err.message);
             });
         });
