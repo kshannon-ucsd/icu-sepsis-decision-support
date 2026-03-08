@@ -58,12 +58,6 @@
                 {% endif %}
             </p>
         </div>
-        {% if suspected_infection_time %}
-        <div>
-            <p class="patient-field-label">suspected_infection_time (dev)</p>
-            <p class="patient-field-value text-muted">{{ suspected_infection_time|date:"Y-m-d H:i" }}</p>
-        </div>
-        {% endif %}
     </div>
 </div>
 
@@ -347,28 +341,111 @@ if (predictionsData.length > 0 || sofaOtherData.length > 0) {
     };
 
     function buildTraces(seriesKeys, dataSource) {
-        return seriesKeys.map(key => {
+        const traces = [];
+        
+        seriesKeys.forEach(key => {
             const style = TRACE_STYLES[key] || { name: key };
-            if (dataSource === 'predictions') {
-                return {
+            
+            // Use candlestick chart for sepsis risk_score
+            if (key === 'risk_score' && dataSource === 'predictions') {
+                // Prepare candlestick data
+                const x = [];
+                const open = [];
+                const close = [];
+                const hoverText = [];
+                
+                for (let i = 0; i < predictionsData.length; i++) {
+                    const currentValue = predictionsData[i][key];
+                    if (currentValue == null) continue;
+                    
+                    x.push(predTimes[i]);
+                    
+                    // Open = previous hour's value (or current if first point)
+                    const prevValue = i > 0 ? predictionsData[i - 1][key] : currentValue;
+                    open.push(prevValue != null ? prevValue : currentValue);
+                    
+                    // Close = current hour's value
+                    close.push(currentValue);
+                    
+                    // Custom hover text
+                    const change = currentValue - (prevValue != null ? prevValue : currentValue);
+                    const direction = change > 0 ? 'increased' : change < 0 ? 'decreased' : 'unchanged';
+                    hoverText.push(
+                        `<b>${predTimes[i]}</b><br>` +
+                        `Current: ${currentValue.toFixed(2)}%<br>` +
+                        `Previous: ${(prevValue != null ? prevValue : currentValue).toFixed(2)}%<br>` +
+                        `<i>(${direction})</i>`
+                    );
+                }
+                
+                // Add candlestick trace
+                traces.push({
+                    type: 'candlestick',
+                    x: x,
+                    open: open,
+                    high: open,  // No top wick
+                    low: close,  // No bottom wick
+                    close: close,
+                    name: 'Sepsis Probability',
+                    increasing: { line: { color: '#f97316', width: 0 }, fillcolor: '#f97316' },  // Orange
+                    decreasing: { line: { color: '#3b82f6', width: 0 }, fillcolor: '#3b82f6' },  // Blue
+                    whiskerwidth: 0,
+                    showlegend: false,
+                    text: hoverText,
+                    hoverinfo: 'text',
+                    hoverlabel: {
+                        bgcolor: 'white',
+                        bordercolor: '#cbd5e1',
+                        font: { size: 12, color: '#1e293b' }
+                    }
+                });
+                
+                // Add legend entries
+                traces.push({
+                    type: 'scatter',
+                    mode: 'markers',
+                    x: [null],
+                    y: [null],
+                    name: 'Risk Increasing',
+                    marker: { size: 10, color: '#f97316', symbol: 'square' },
+                    showlegend: true,
+                    hoverinfo: 'skip'
+                });
+                
+                traces.push({
+                    type: 'scatter',
+                    mode: 'markers',
+                    x: [null],
+                    y: [null],
+                    name: 'Risk Decreasing',
+                    marker: { size: 10, color: '#3b82f6', symbol: 'square' },
+                    showlegend: true,
+                    hoverinfo: 'skip'
+                });
+            }
+            // Standard line chart for other metrics
+            else if (dataSource === 'predictions') {
+                traces.push({
                     ...BASE_TRACE,
                     x: predTimes,
                     y: predictionsData.map(d => d[key]),
                     name: style.name,
                     line: style.line,
                     marker: style.marker
-                };
+                });
             } else {
-                return {
+                traces.push({
                     ...BASE_TRACE,
                     x: sofaTimes,
                     y: sofaOtherData.map(d => d[key]),
                     name: style.name,
                     line: style.line,
                     marker: style.marker
-                };
+                });
             }
         });
+        
+        return traces;
     }
 
     const baseLayout = {
@@ -376,8 +453,14 @@ if (predictionsData.length > 0 || sofaOtherData.length > 0) {
         showlegend: true,
         legend: { orientation: 'h', y: 1.15, x: 0.45, font: { size: 12 } },
         margin: { l: 60, r: 60, t: 50, b: 45 },
-        xaxis: { title: { text: 'Hour', font: { size: 12 } }, tickfont: { size: 10 }, automargin: true },
-        yaxis: { tickfont: { size: 10 }, automargin: true, autorange: true }
+        xaxis: { 
+            title: { text: 'Hour', font: { size: 12 } }, 
+            tickfont: { size: 10 }, 
+            automargin: true,
+            rangeslider: { visible: false }  // Disable rangeslider for candlestick charts
+        },
+        yaxis: { tickfont: { size: 10 }, automargin: true, autorange: true },
+        bargap: 0.2  // Reduce gap between candles (0 = no gap, 1 = full gap)
     };
 
     function renderChart(chartKey) {
@@ -390,22 +473,68 @@ if (predictionsData.length > 0 || sofaOtherData.length > 0) {
             yaxis: {
                 ...baseLayout.yaxis,
                 title: { text: chart.yTitle, font: { size: 11 } },
-                autorange: true
+                rangemode: 'tozero'  // Start y-axis at 0
             }
         };
 
         if (chartKey === 'sepsis_only') {
-            layout.shapes = [];
-            const modelIdx = predictionsMeta.model_sepsis_hour_index;
-            if (modelIdx != null && modelIdx >= 0 && modelIdx < predTimes.length) {
-                const x0 = predTimes[modelIdx];
-                layout.shapes.push({
-                    type: 'line',
-                    x0: x0, x1: x0, y0: 0, y1: 1,
-                    yref: 'paper', xref: 'x',
-                    line: { color: '#3182ce', width: 1.5, dash: 'dash' }
-                });
+            // Always show 24 hours on x-axis (or more if patient stays longer)
+            const maxHours = Math.max(24, predictionsData.length);
+            
+            // Generate all 24 hour labels
+            const all24Hours = [];
+            for (let h = 0; h < maxHours; h++) {
+                all24Hours.push(`${h.toString().padStart(2, '0')}:00`);
             }
+            
+            // Add invisible trace spanning all 24 hours to force x-axis to show all ticks
+            traces.unshift({
+                type: 'scatter',
+                x: all24Hours,
+                y: Array(all24Hours.length).fill(null),
+                mode: 'markers',
+                marker: { opacity: 0 },
+                showlegend: false,
+                hoverinfo: 'skip'
+            });
+            
+            layout.xaxis = {
+                ...baseLayout.xaxis,
+                title: { text: 'Hours Since Admission', font: { size: 12 } },
+                type: 'category',  // Treat as categories so all tick marks show
+                categoryarray: all24Hours,  // Show all 24 hours
+                categoryorder: 'array'
+            };
+            
+            layout.shapes = [];
+            layout.annotations = [];
+            
+            // Add 30% threshold line
+            layout.shapes.push({
+                type: 'line',
+                x0: 0, x1: 1,
+                y0: 30, y1: 30,
+                xref: 'paper', yref: 'y',
+                line: { color: '#dc2626', width: 2, dash: 'solid' }
+            });
+            
+            // Add annotation for threshold line
+            layout.annotations.push({
+                x: 0.98,
+                y: 30,
+                xref: 'paper',
+                yref: 'y',
+                text: '<b>Treatment Threshold (30%)</b>',
+                showarrow: false,
+                xanchor: 'right',
+                yanchor: 'bottom',
+                font: { size: 11, color: '#dc2626' },
+                bgcolor: 'rgba(255, 255, 255, 0.9)',
+                bordercolor: '#dc2626',
+                borderwidth: 1,
+                borderpad: 4
+            });
+            
             const actualX = predictionsMeta.actual_sepsis_x;
             if (actualX != null) {
                 const actualHour = Math.floor(actualX);
